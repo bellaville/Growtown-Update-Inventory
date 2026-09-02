@@ -2,23 +2,25 @@
  * Add a new lot to Bulk Inventory from the Work Log App
  */
 function addLotToBulkInventory(lotNumber, strain, reportingLotType, cannabisForm, inputIds, notes, craCategory, lotOwner, location, date) {
+    console.log("Adding/updating lot in Bulk Inventory:", lotNumber, strain, reportingLotType, cannabisForm, inputIds, notes, craCategory, lotOwner, location, date);
 
     try {
-        const workLog = SpreadsheetApp.openById(
-            PropertiesService.getScriptProperties().getProperty('BULK_INVENTORY')
-        );
-
         const lock = LockService.getScriptLock(); // get a lock for this script to avoid race conditions
         lock.waitLock(60000); // wait up to 60 seconds
 
         try {
+
+            const workLog = SpreadsheetApp.openById(
+                PropertiesService.getScriptProperties().getProperty('BULK_INVENTORY')
+            );
+
             const inventorySheet = workLog.getSheetByName(INVENTORY_SHEET_NAME);
 
             // 1. Try to find existing lotNumber in LOT_ID_ROW column
-            const existingRow = findRowByLotId(inventorySheet, LOT_ID_ROW, lotNumber);
+            const existingRow = findRowByLotId(inventorySheet, LOT_ID_ROW, lotNumber, START_ROW);
 
             // 2. If not found, use next empty row
-            const targetRow = existingRow !== null ? existingRow : getNextEmptyRowForColumn(inventorySheet, LOT_ID_ROW);
+            const targetRow = existingRow !== null ? existingRow : getNextEmptyRowForColumn(inventorySheet, LOT_ID_ROW, START_ROW);
 
             console.log("Target row:", targetRow, existingRow ? "(updated)" : "(new)");
 
@@ -46,7 +48,7 @@ function addLotToBulkInventory(lotNumber, strain, reportingLotType, cannabisForm
     } catch (error) {
         MailApp.sendEmail({
             to: "bella@growtown.ca",
-            subject: "WORK LOG APP ALERT: Add/Update Lot Failed",
+            subject: "WORK LOG APP ALERT: Add/Update Cannabis Lot Failed",
             body: "Error: " + error.toString()
         });
         throw error;
@@ -58,8 +60,7 @@ function addLotToBulkInventory(lotNumber, strain, reportingLotType, cannabisForm
  * Finds the first row (>= startRow) where the value in lotIdColumn equals lotId.
  * Returns the 1-based row number, or null if not found.
  */
-function findRowByLotId(sheet, lotIdColumn, lotId) {
-    const startRow = 4; // same assumption as your getNextEmptyRowForColumn
+function findRowByLotId(sheet, lotIdColumn, lotId, startRow) {
     const lastRow = sheet.getLastRow();
 
     if (lastRow < startRow) {
@@ -82,11 +83,10 @@ function findRowByLotId(sheet, lotIdColumn, lotId) {
  * Returns the next empty row number for a given column (1-based).
  * It scans from row 2 downward (assumes row 1 is header).
  */
-function getNextEmptyRowForColumn(sheet, columnNumber) {
+function getNextEmptyRowForColumn(sheet, columnNumber, startRow) {
     const lastRow = sheet.getLastRow();
-    const startRow = 4; // assume row 1 is header
 
-    // If sheet is completely empty below header, start at row 2
+    // If sheet is completely empty below header, start at startRow
     if (lastRow < startRow) {
         return startRow;
     }
@@ -103,6 +103,6 @@ function getNextEmptyRowForColumn(sheet, columnNumber) {
     return lastRow + 1;
 }
 
-function testForErrorAddLot(){
+function testForErrorAddLot() {
     addLotToBulkInventory();
 }
