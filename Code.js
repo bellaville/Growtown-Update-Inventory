@@ -47,7 +47,8 @@ function writeToInventory(wo_id, operation, date, can_IP_ids, can_IP_weight, can
                 transactionLogSheet.appendRow([inventoryKey, new Date()]);
                 console.log("Appended inventory key to transaction log:", inventoryKey);
 
-                const cannabis_result = updateBulkInventory(operation, can_inputs, can_outputs);
+                // Update inventory for cannabis and non-cannabis items
+                const cannabis_result = updateBulkInventory(wo_id, date, operation, can_inputs, can_outputs);
                 const non_cannabis_result = updateNonCanInventory(operation, non_can_inputs, non_can_outputs);
 
                 if (cannabis_result === false || non_cannabis_result === false) {
@@ -84,13 +85,30 @@ function writeToInventory(wo_id, operation, date, can_IP_ids, can_IP_weight, can
  * @param can_outputs list of outputs, each with a lot number, weight, and flag indicating whether the output is for destruction
  * @returns nothing
  */
-function updateBulkInventory(operation, can_inputs, can_outputs) {
+function updateBulkInventory(wo_id, date, operation, can_inputs, can_outputs) {
     const inventory = SpreadsheetApp.openById(
         PropertiesService.getScriptProperties().getProperty('BULK_INVENTORY')
     );
 
+    //get map of current lot weights after update to pass to transaction function below
+    const workLogSheet = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('WORK_LOG_ID'));
+    const lotSheet = workLogSheet.getSheetByName('lotNumbers');
+
+    const lotLastRow = lotSheet.getLastRow();
+
+    if (lotLastRow < 2) return new Map();
+
+    const values = lotSheet.getRange(2, 1, lotLastRow - 1, 5).getValues(); // A:E
+    const lotMap = new Map();
+
+    values.forEach(row => {
+        const lotID = String(row[0] || '').trim(); // col A
+        const weight = Number(row[4]) || 0;        // col E
+        if (lotID) lotMap.set(lotID, weight);
+    });
+
     // Get inventory sheet and compute number of rows
-    const sheet= inventory.getSheetByName(INVENTORY_SHEET_NAME);
+    const sheet = inventory.getSheetByName(INVENTORY_SHEET_NAME);
     const lastRow = LAST_ROW; //sheet.getLastRow();
     if (lastRow < START_ROW) { return false } // return if inventory empty
     const numRows = lastRow - START_ROW + 1;
@@ -162,6 +180,8 @@ function updateBulkInventory(operation, can_inputs, can_outputs) {
         sheet.getRange(START_ROW + rowIndex, DESTRUCTION_COL).setValue(destructionValues[rowIndex][0]);
     }
 
+
+    writeToLotTransactionSheet(can_inputs, can_outputs, lotMap, wo_id, operation, date);
     return true; // indicate success
 
 }
@@ -170,7 +190,32 @@ function updateNonCanInventory(operation, non_can_inputs, non_can_outputs) {
     return true;
 }
 
-function writeToLotTransactionSheet() {
+function writeToLotTransactionSheet(inputs, outputs, lotMap, wo_id, operation, date) {
+    try {
+        const changes = getLotWeightChanges(inputs, outputs);
+        console.log("Net weight changes by lot:", changes);
+
+        const ss = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('LOT_TRANSACTIONS'));
+        transactionSheet = ss.getSheetByName('Transactions');
+
+        for (const [lotNumber, netChange] of Object.entries(changes)) {
+            const lotId = String(lotNumber).trim();
+            const weightChange = netChange;
+            const currentWeight = lotMap.get(lotId) || 0;
+            toAppend = [Utilities.getUuid(), lotId, wo_id, date, new Date(), operation, weightChange, currentWeight + weightChange];
+            transactionSheet.appendRow(toAppend);
+            console.log("Appended transaction for lot:", lotId, "Change:", weightChange, "Current Weight:", currentWeight + weightChange);
+        }
+    } catch (error) {
+        console.error("Error occurred while writing to transaction sheet:", error);
+        MailApp.sendEmail({
+            to: "bella@growtown.ca",
+            subject: "WORK LOG APP ALERT: Write to Lot Transaction Sheet Failed",
+            body: "Error: " + error.toString()
+        });
+        return;
+    }
+
 
 }
 
@@ -259,4 +304,37 @@ function createOutputs(lotList, weightList, flagList) {
         grouped[key].weight += weight;
     }
     return Object.values(grouped);
+}
+
+/**
+ * Combines inputs and outputs into a map of lotNumber -> net weight change.
+ * - inputs: array of { lotNumber, weight } where weight is already negative for subtraction
+ * - outputs: array of { lotNumber, weight, flag } where flag === true means destruction (ignored)
+ * Returns: { [lotNumber]: netWeightChange }
+ */
+function getLotWeightChanges(inputs, outputs) {
+    const lotChanges = {};
+
+    // Process inputs (weights are already negative where appropriate)
+    if (inputs && Array.isArray(inputs)) {
+        for (const item of inputs) {
+            const lot = item.lotNumber;
+            if (!lot) continue;
+            const w = Number(item.weight) || 0;
+            lotChanges[lot] = (lotChanges[lot] || 0) + w;
+        }
+    }
+
+    // Process outputs (ignore destruction: flag === true)
+    if (outputs && Array.isArray(outputs)) {
+        for (const item of outputs) {
+            const lot = item.lotNumber;
+            if (!lot) continue;
+            if (item.flag === true) continue; // skip destruction
+            const w = Number(item.weight) || 0;
+            lotChanges[lot] = (lotChanges[lot] || 0) + w;
+        }
+    }
+
+    return lotChanges;
 }
