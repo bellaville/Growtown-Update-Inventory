@@ -28,11 +28,13 @@ function writeToLotTransactionSheet(inputs, outputs, lotMap, wo_id, operation, d
         console.error("Error occurred while writing to transaction sheet:", error);
         MailApp.sendEmail({
             to: "bella@growtown.ca",
-            subject: "WORK LOG APP ALERT: Write to Lot Transaction Sheet Failed",
+            subject: "WORK LOG SCRIPT ALERT: Write to Lot Transaction Sheet Failed",
             body: "Error: " + error.toString()
         });
-        return;
+        return false; // indicate failure
     }
+
+    return true; // indicate success
 
 
 }

@@ -68,7 +68,7 @@ function writeToInventory(wo_id, operation, date, can_IP_ids, can_IP_weight, can
     } catch (error) {
         MailApp.sendEmail({
             to: "bella@growtown.ca",
-            subject: "WORK LOG APP ALERT: Update Inventory Script Failed",
+            subject: "WORK LOG SCRIPT ALERT: Update Inventory Script Failed",
             body: "Error: " + error.toString()
         });
         console.log("Error occurred while writing to inventory:", error);
@@ -87,103 +87,114 @@ function writeToInventory(wo_id, operation, date, can_IP_ids, can_IP_weight, can
  * @returns nothing
  */
 function updateBulkInventory(wo_id, date, operation, can_inputs, can_outputs) {
-    const inventory = SpreadsheetApp.openById(
-        PropertiesService.getScriptProperties().getProperty('BULK_INVENTORY')
-    );
 
-    //get map of current lot weights before update to pass to transaction function below
-    const workLogSheet = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('WORK_LOG_ID'));
-    const lotSheet = workLogSheet.getSheetByName('lotNumbers');
+    try {
+        const inventory = SpreadsheetApp.openById(
+            PropertiesService.getScriptProperties().getProperty('BULK_INVENTORY')
+        );
 
-    const lotLastRow = lotSheet.getLastRow();
+        //get map of current lot weights before update to pass to transaction function below
+        const workLogSheet = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('WORK_LOG_ID'));
+        const lotSheet = workLogSheet.getSheetByName('lotNumbers');
 
-    if (lotLastRow < 2) return new Map();
+        const lotLastRow = lotSheet.getLastRow();
 
-    const values = lotSheet.getRange(2, 1, lotLastRow - 1, 5).getValues(); // A:E
-    const lotMap = new Map();
+        if (lotLastRow < 2) return new Map();
 
-    values.forEach(row => {
-        const lotID = String(row[0] || '').trim(); // col A
-        const weight = Number(row[4]) || 0;        // col E
-        if (lotID) lotMap.set(lotID, weight);
-    });
+        const values = lotSheet.getRange(2, 1, lotLastRow - 1, 5).getValues(); // A:E
+        const lotMap = new Map();
 
-    // Get inventory sheet and compute number of rows
-    const sheet = inventory.getSheetByName(INVENTORY_SHEET_NAME);
-    const lastRow = LAST_ROW; //sheet.getLastRow();
-    if (lastRow < START_ROW) { return false } // return if inventory empty
-    const numRows = lastRow - START_ROW + 1;
+        values.forEach(row => {
+            const lotID = String(row[0] || '').trim(); // col A
+            const weight = Number(row[4]) || 0;        // col E
+            if (lotID) lotMap.set(lotID, weight);
+        });
 
-    // get needed columns
-    const allData = sheet.getRange(START_ROW, 1, numRows, RETENTION_COL).getValues();
+        // Get inventory sheet and compute number of rows
+        const sheet = inventory.getSheetByName(INVENTORY_SHEET_NAME);
+        const lastRow = LAST_ROW; //sheet.getLastRow();
+        if (lastRow < START_ROW) { return false } // return if inventory empty
+        const numRows = lastRow - START_ROW + 1;
 
-    // create arrays of lot numbers and inventory values
-    const lotNumbers = allData.map(r => [r[LOT_COL - 1]]);
-    const inventoryValues = allData.map(r => [r[INVENTORY_COL - 1]]);
-    const retentionValues = allData.map(r => [r[RETENTION_COL - 1]]);
-    const destructionValues = allData.map(r => [r[DESTRUCTION_COL - 1]]);
+        // get needed columns
+        const allData = sheet.getRange(START_ROW, 1, numRows, RETENTION_COL).getValues();
 
-    const rowByLot = new Map();
-    for (let i = 0; i < numRows; i++) {
-        rowByLot.set(String(lotNumbers[i][0]), i);
-    }
+        // create arrays of lot numbers and inventory values
+        const lotNumbers = allData.map(r => [r[LOT_COL - 1]]);
+        const inventoryValues = allData.map(r => [r[INVENTORY_COL - 1]]);
+        const retentionValues = allData.map(r => [r[RETENTION_COL - 1]]);
+        const destructionValues = allData.map(r => [r[DESTRUCTION_COL - 1]]);
 
-    const inventoryDeltaByLot = new Map();
-    const retentionDeltaByLot = new Map();
-    const destructionDeltaByLot = new Map();
-
-    // collect all input changes
-    for (const input of can_inputs) {
-        const lotKey = String(input.lotNumber);
-        // if operation is destruction subtract from destruct column NOT weight column
-        if (operation === "Destruction") {
-            destructionDeltaByLot.set(lotKey, (destructionDeltaByLot.get(lotKey) || 0) + input.weight);
-        } else {
-            inventoryDeltaByLot.set(lotKey, (inventoryDeltaByLot.get(lotKey) || 0) + input.weight);
+        const rowByLot = new Map();
+        for (let i = 0; i < numRows; i++) {
+            rowByLot.set(String(lotNumbers[i][0]), i);
         }
-        // if retention sample, add to retention column after subtracting from inventory column
-        if (operation === 'Retention Sample') {
-            retentionDeltaByLot.set(lotKey, (retentionDeltaByLot.get(lotKey) || 0) - input.weight); // subtract since input weights are negative
-        }
-    }
 
-    // collect all output changes
-    if (!NOT_AFFECT_OUTPUT.includes(operation)) {
-        for (const output of can_outputs) {
-            const lotKey = String(output.lotNumber);
-            if (output.flag) {
-                destructionDeltaByLot.set(lotKey, (destructionDeltaByLot.get(lotKey) || 0) + output.weight);
+        const inventoryDeltaByLot = new Map();
+        const retentionDeltaByLot = new Map();
+        const destructionDeltaByLot = new Map();
+
+        // collect all input changes
+        for (const input of can_inputs) {
+            const lotKey = String(input.lotNumber);
+            // if operation is destruction subtract from destruct column NOT weight column
+            if (operation === "Destruction") {
+                destructionDeltaByLot.set(lotKey, (destructionDeltaByLot.get(lotKey) || 0) + input.weight);
             } else {
-                inventoryDeltaByLot.set(lotKey, (inventoryDeltaByLot.get(lotKey) || 0) + output.weight);
+                inventoryDeltaByLot.set(lotKey, (inventoryDeltaByLot.get(lotKey) || 0) + input.weight);
+            }
+            // if retention sample, add to retention column after subtracting from inventory column
+            if (operation === 'Retention Sample') {
+                retentionDeltaByLot.set(lotKey, (retentionDeltaByLot.get(lotKey) || 0) - input.weight); // subtract since input weights are negative
             }
         }
+
+        // collect all output changes
+        if (!NOT_AFFECT_OUTPUT.includes(operation)) {
+            for (const output of can_outputs) {
+                const lotKey = String(output.lotNumber);
+                if (output.flag) {
+                    destructionDeltaByLot.set(lotKey, (destructionDeltaByLot.get(lotKey) || 0) + output.weight);
+                } else {
+                    inventoryDeltaByLot.set(lotKey, (inventoryDeltaByLot.get(lotKey) || 0) + output.weight);
+                }
+            }
+        }
+
+        // apply all changes to inventory sheet
+        for (const [lotKey, delta] of inventoryDeltaByLot.entries()) {
+            const rowIndex = rowByLot.get(lotKey);
+            if (rowIndex == null) continue;
+            inventoryValues[rowIndex][0] = Number(inventoryValues[rowIndex][0]) + delta;
+            sheet.getRange(START_ROW + rowIndex, INVENTORY_COL).setValue(inventoryValues[rowIndex][0]);
+        }
+
+        for (const [lotKey, delta] of retentionDeltaByLot.entries()) {
+            const rowIndex = rowByLot.get(lotKey);
+            if (rowIndex == null) continue;
+            retentionValues[rowIndex][0] = Number(retentionValues[rowIndex][0]) + delta;
+            sheet.getRange(START_ROW + rowIndex, RETENTION_COL).setValue(retentionValues[rowIndex][0]);
+        }
+
+        for (const [lotKey, delta] of destructionDeltaByLot.entries()) {
+            const rowIndex = rowByLot.get(lotKey);
+            if (rowIndex == null) continue;
+            destructionValues[rowIndex][0] = Number(destructionValues[rowIndex][0]) + delta;
+            sheet.getRange(START_ROW + rowIndex, DESTRUCTION_COL).setValue(destructionValues[rowIndex][0]);
+        }
+
+    } catch (error) {
+        MailApp.sendEmail({
+            to: "bella@growtown.ca",
+            subject: "WORK LOG SCRIPT ALERT: Update Cannabis Bulk Inventory Script Failed",
+            body: "Error: " + error.toString()
+        });
+        console.log("Error occurred while updating cannabis bulk inventory:", error);
+        return false;
     }
 
-    // apply all changes to inventory sheet
-    for (const [lotKey, delta] of inventoryDeltaByLot.entries()) {
-        const rowIndex = rowByLot.get(lotKey);
-        if (rowIndex == null) continue;
-        inventoryValues[rowIndex][0] = Number(inventoryValues[rowIndex][0]) + delta;
-        sheet.getRange(START_ROW + rowIndex, INVENTORY_COL).setValue(inventoryValues[rowIndex][0]);
-    }
 
-    for (const [lotKey, delta] of retentionDeltaByLot.entries()) {
-        const rowIndex = rowByLot.get(lotKey);
-        if (rowIndex == null) continue;
-        retentionValues[rowIndex][0] = Number(retentionValues[rowIndex][0]) + delta;
-        sheet.getRange(START_ROW + rowIndex, RETENTION_COL).setValue(retentionValues[rowIndex][0]);
-    }
-
-    for (const [lotKey, delta] of destructionDeltaByLot.entries()) {
-        const rowIndex = rowByLot.get(lotKey);
-        if (rowIndex == null) continue;
-        destructionValues[rowIndex][0] = Number(destructionValues[rowIndex][0]) + delta;
-        sheet.getRange(START_ROW + rowIndex, DESTRUCTION_COL).setValue(destructionValues[rowIndex][0]);
-    }
-
-
-    writeToLotTransactionSheet(can_inputs, can_outputs, lotMap, wo_id, operation, date);
-    return true; // indicate success
+    return writeToLotTransactionSheet(can_inputs, can_outputs, lotMap, wo_id, operation, date);
 
 }
 
