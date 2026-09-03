@@ -11,7 +11,7 @@
 function writeToLotTransactionSheet(inputs, outputs, lotMap, wo_id, operation, date) {
     try {
         const changes = getLotWeightChanges(inputs, outputs);
-        console.log("Net weight changes by lot:", changes);
+        console.log("Net cannabis weight changes by lot:", changes);
 
         const ss = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('LOT_TRANSACTIONS'));
         transactionSheet = ss.getSheetByName('Transactions');

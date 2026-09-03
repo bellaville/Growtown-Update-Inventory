@@ -99,7 +99,7 @@ function updateBulkInventory(wo_id, date, operation, can_inputs, can_outputs) {
 
         const lotLastRow = lotSheet.getLastRow();
 
-        if (lotLastRow < 2) return new Map();
+        if (lotLastRow < 2) return false; // issue with lot sheet, no data to read
 
         const values = lotSheet.getRange(2, 1, lotLastRow - 1, 5).getValues(); // A:E
         const lotMap = new Map();
@@ -107,7 +107,9 @@ function updateBulkInventory(wo_id, date, operation, can_inputs, can_outputs) {
         values.forEach(row => {
             const lotID = String(row[0] || '').trim(); // col A
             const weight = Number(row[4]) || 0;        // col E
-            if (lotID) lotMap.set(lotID, weight);
+            if (lotID) {
+                lotMap.set(lotID, weight);
+            }
         });
 
         // Get inventory sheet and compute number of rows
@@ -183,6 +185,8 @@ function updateBulkInventory(wo_id, date, operation, can_inputs, can_outputs) {
             sheet.getRange(START_ROW + rowIndex, DESTRUCTION_COL).setValue(destructionValues[rowIndex][0]);
         }
 
+        return writeToLotTransactionSheet(can_inputs, can_outputs, lotMap, wo_id, operation, date);
+
     } catch (error) {
         MailApp.sendEmail({
             to: "bella@growtown.ca",
@@ -193,13 +197,39 @@ function updateBulkInventory(wo_id, date, operation, can_inputs, can_outputs) {
         return false;
     }
 
-
-    return writeToLotTransactionSheet(can_inputs, can_outputs, lotMap, wo_id, operation, date);
-
 }
 
 function updateNonCanInventory(operation, non_can_inputs, non_can_outputs) {
-    return true;
+    try {
+        const inventory = SpreadsheetApp.openById(
+            PropertiesService.getScriptProperties().getProperty('WORK_LOG_ID')
+        );
+        const sheet = inventory.getSheetByName(NON_CANNABIS_INVENTORY_SHEET_NAME);
+        for (const input of non_can_inputs) {
+            console.log("Processing non-cannabis input:", input);
+            const existingRow = findRowByLotId(sheet, 1, input.lotNumber, NON_CANNABIS_START_ROW);
+            const current_value = sheet.getRange(existingRow, 6).getValue(); // column F is weight
+            sheet.getRange(existingRow, 6).setValue(current_value + input.weight);
+        }
+
+        for (const output of non_can_outputs) {
+            console.log("Processing non-cannabis output:", output);
+            const existingRow = findRowByLotId(sheet, 1, output.lotNumber, NON_CANNABIS_START_ROW);
+            const current_value = sheet.getRange(existingRow, 6).getValue(); // column F is weight
+            sheet.getRange(existingRow, 6).setValue(current_value + output.weight);
+        }
+        
+    } catch (error) {
+        MailApp.sendEmail({
+            to: "bella@growtown.ca",
+            subject: "WORK LOG SCRIPT ALERT: Update NON-Cannabis Bulk Inventory Script Failed",
+            body: "Error: " + error.toString()
+        });
+        console.log("Error occurred while updating non-cannabis bulk inventory:", error);
+        return false;
+    }
+
+    return true; // indicate success
 }
 
 
