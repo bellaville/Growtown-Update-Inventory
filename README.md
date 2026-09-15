@@ -443,7 +443,6 @@ The AppSheet inputs must provide parallel arrays with matching positions. For ex
 
 ```text
 can_IP_lots[0] corresponds to can_IP_weight[0]
-can_IP_lots [developers.google](https://developers.google.com/apps-script/reference/lock/lock) corresponds to can_IP_weight [developers.google](https://developers.google.com/apps-script/reference/lock/lock)
 ```
 
 For outputs:
