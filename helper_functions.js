@@ -10,6 +10,9 @@
  */
 function writeToLotTransactionSheet(inputs, outputs, lotMap, wo_id, operation, date) {
     try {
+        if (opertion === 'Destruction') {
+            return true; // skip writing to transaction sheet for destruction operations
+        }
         const changes = getLotWeightChanges(inputs, outputs);
         console.log("Net cannabis weight changes by lot:", changes);
 
