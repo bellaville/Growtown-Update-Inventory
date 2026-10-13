@@ -1,8 +1,8 @@
 /**
  * Add a new lot to Bulk Inventory from the Work Log App
  */
-function addLotToBulkInventory(lotNumber, strain, reportingLotType, cannabisForm, notes, lotOwner, location, date) {
-    console.log("Adding/updating lot in Bulk Inventory:", lotNumber, strain, reportingLotType, cannabisForm, notes, lotOwner, location, date);
+function addLotToBulkInventory(lotNumber, strain, reportingLotType, cannabisForm, notes, lotOwner, location, date, released) {
+    console.log("Adding/updating lot in Bulk Inventory:", lotNumber, strain, reportingLotType, cannabisForm, notes, lotOwner, location, date, released);
 
     try {
         const lock = LockService.getScriptLock(); // get a lock for this script to avoid race conditions
@@ -34,6 +34,7 @@ function addLotToBulkInventory(lotNumber, strain, reportingLotType, cannabisForm
             inventorySheet.getRange(targetRow, LOT_OWNER_ROW).setValue(lotOwner);
             inventorySheet.getRange(targetRow, LOCATION_ROW).setValue(location);
             inventorySheet.getRange(targetRow, CREATED_DATE).setValue(date);
+            inventorySheet.getRange(targetRow, RELEASED).setValue(released);
 
             console.log(inventorySheet.getName());
             console.log("Final target row:", targetRow);

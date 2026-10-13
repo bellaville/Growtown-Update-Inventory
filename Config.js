@@ -22,6 +22,7 @@ const CRA_CATEGORY_ROW = 13;
 const LOT_OWNER_ROW = 15;
 const LOCATION_ROW = 17;
 const CREATED_DATE = 23;
+const RELEASED = 24;
 
 // variables needed for adding/editing non-cannabis lot
 const NON_CANNABIS_INVENTORY_SHEET_NAME = 'Non-Cannabis Inventory';
